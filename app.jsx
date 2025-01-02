@@ -1,113 +1,48 @@
-import { useState, useEffect, useCallback } from "react";
-import Web3 from "web3";
-import CounterABI from "./CounterABI.json"; // Replace this with the path to your ABI JSON file
-import "./App.css"; // Replace this with your CSS file if necessary
+// Web3.js ile Ethereum'a bağlanalım
+let web3;
+let contract;
+const contractAddress = 'AKILLI_SÖZLEŞME_ADRESİNİZ';
+const abi = [...] // Akıllı sözleşmenin ABI
 
-const App = () => {
-  const [contract, setContract] = useState(null);
-  const [accounts, setAccounts] = useState(null);
-  const [currentCount, setCurrentCount] = useState(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-
-  const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS; // Changed from process.env.REACT_APP_CONTRACT_ADDRESS
-
-  const connectWallet = async () => {
+async function init() {
     if (window.ethereum) {
-      try {
-        setIsConnecting(true);
-        const web3Instance = new Web3(window.ethereum);
-        await window.ethereum.request({ method: "eth_requestAccounts" });
-        const accounts = await web3Instance.eth.getAccounts();
-        setAccounts(accounts);
+        web3 = new Web3(window.ethereum);
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
 
-        console.log('ABI:', CounterABI);
-        const contractInstance = new web3Instance.eth.Contract(
-          Array.isArray(CounterABI) ? CounterABI : CounterABI.abi || [],
-          contractAddress
-        );
-        setContract(contractInstance);
-
-        // Fetch the initial count immediately after setting up the contract
-        const count = await contractInstance.methods.retrieve().call();
-        setCurrentCount(Number(count));
-      } catch (error) {
-        if (error.code === -32002) {
-          alert(
-            "There is already a pending request to connect to MetaMask. Please check."
-          );
-        } else {
-          console.error("Error connecting to MetaMask", error);
-        }
-      } finally {
-        setIsConnecting(false);
-      }
+        // Akıllı sözleşmeye bağlanalım
+        contract = new web3.eth.Contract(abi, contractAddress);
+        loadBooks();
     } else {
-      alert("MetaMask is not installed");
+        alert("Ethereum cüzdanı gerekli!");
     }
-  };
+}
 
-  const disconnectWallet = () => {
-    setContract(null);
-    setAccounts(null);
-    setCurrentCount(null);
-  };
-
-  const incrementCounter = async () => {
-    if (contract && accounts) {
-      try {
-        const res = await contract.methods
-          .increment()
-          .send({ from: accounts[0] });
-        console.log(res);
-        fetchCurrentCount();
-      } catch (error) {
-        console.error("Error incrementing counter", error);
-      }
+async function loadBooks() {
+    const bookCount = await contract.methods.bookCount().call();
+    const bookList = document.getElementById("book-list");
+    bookList.innerHTML = '';
+    
+    for (let i = 1; i <= bookCount; i++) {
+        const book = await contract.methods.books(i).call();
+        const bookDiv = document.createElement("div");
+        bookDiv.classList.add("book");
+        bookDiv.innerHTML = `
+            <h3>${book.title}</h3>
+            <p>Yazar: ${book.author}</p>
+            <p>${book.description}</p>
+        `;
+        bookList.appendChild(bookDiv);
     }
-  };
+}
 
-  const fetchCurrentCount = useCallback(async () => {
-    if (contract) {
-      try {
-        const count = await contract.methods.retrieve().call();
-        console.log(count);
-        setCurrentCount(Number(count));
-      } catch (error) {
-        console.error("Error fetching current count", error);
-      }
-    }
-  }, [contract]);
+document.getElementById("submit-comment").addEventListener("click", async () => {
+    const comment = document.getElementById("comment-input").value;
+    const bookId = 1;  // Örnek olarak ilk kitabı seçtik
 
-  useEffect(() => {
-    if (contract) {
-      fetchCurrentCount();
-    }
-  }, [contract, fetchCurrentCount]);
+    const accounts = await web3.eth.getAccounts();
+    await contract.methods.addComment(bookId, comment).send({ from: accounts[0] });
+    alert("Yorumunuz başarıyla eklendi!");
+});
 
-  return (
-    <div className="App">
-      <h1>Counter DApp</h1>
-      {accounts ? (
-        <>
-          <p>Connected Account: {accounts[0]}</p>
-          <p>
-            Current Count:{" "}
-            {currentCount !== null ? (
-              currentCount
-            ) : (
-              <span className="loading">Loading...</span>
-            )}
-          </p>
-          <button onClick={incrementCounter}>Increment Counter</button>
-          <button onClick={disconnectWallet}>Disconnect Wallet</button>
-        </>
-      ) : (
-        <button onClick={connectWallet} disabled={isConnecting}>
-          {isConnecting ? "Connecting..." : "Connect Wallet"}
-        </button>
-      )}
-    </div>
-  );
-};
+init();
 
-export default App;
